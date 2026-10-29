@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UMBRA</title>
+<style>
+:root{--bg:#050505;--fg:#e8e8e8;--dim:#777;--line:#3a3a3a;--panel:#0d0d0d;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:"Courier New",ui-monospace,monospace;overflow:hidden}
+canvas#noise{position:fixed;inset:0;width:100%;height:100%;opacity:.14;pointer-events:none;z-index:50;image-rendering:pixelated}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:51;background:radial-gradient(circle,transparent 55%,rgba(0,0,0,.7))}
+.fade{animation:in .9s ease both}
+@keyframes in{from{opacity:0;filter:blur(6px);transform:translateY(10px)}to{opacity:1;filter:none;transform:none}}
+@keyframes flick{0%,100%{opacity:1}45%{opacity:.85}50%{opacity:.3}55%{opacity:1}}
+#splash,#boot{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:20px;z-index:5}
+#splash{cursor:pointer;z-index:9;background:var(--bg);letter-spacing:6px;animation:flick 3s infinite}
+#splash small{display:block;margin-top:10px;color:var(--dim);letter-spacing:2px}
+#boot{display:none}
+#log{width:min(560px,100%);min-height:140px;font-size:14px;line-height:1.5;white-space:pre-wrap;color:var(--dim)}
+#login{display:none;width:min(560px,100%);margin-top:18px;text-align:center}
+#login h1{font-size:clamp(34px,10vw,64px);margin:0 0 6px;letter-spacing:12px;text-shadow:3px 0 #fff4,-3px 0 #fff2}
+#login p{margin:0 0 16px;color:var(--dim);letter-spacing:3px;font-size:12px}
+#pw{width:100%;background:#000;border:1px solid var(--fg);color:var(--fg);padding:12px;font:inherit;font-size:18px;text-align:center;letter-spacing:6px;outline:none}
+#pw:focus{box-shadow:0 0 18px #fff3}
+#msg{height:24px;margin-top:10px;font-weight:bold;letter-spacing:3px}
+.shake{animation:sh .4s}
+@keyframes sh{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+#desk{position:fixed;inset:0;display:none;z-index:6;background:linear-gradient(160deg,#111,#050505 70%)}
+#icons{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:14px;display:flex;flex-direction:column;gap:16px}
+.ic{width:80px;text-align:center;cursor:pointer;font-size:12px;user-select:none;animation:in .7s ease both}
+.ic b{display:block;font-size:30px;margin-bottom:4px;filter:grayscale(1)}
+.ic:hover span{background:var(--fg);color:#000;padding:0 3px}
+#bar{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:13px;height:calc(40px + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px)}
+.win{position:absolute;width:min(440px,94vw);background:var(--panel);border:1px solid var(--fg);display:flex;flex-direction:column;max-height:70vh;animation:wopen .35s ease both}
+@keyframes wopen{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
+.tb{background:var(--fg);color:#000;padding:6px 10px;display:flex;justify-content:space-between;cursor:move;touch-action:none;font-size:13px;font-weight:bold}
+.tb i{cursor:pointer;font-style:normal}
+.bd{padding:12px;overflow:auto;font-size:13px;line-height:1.5}
+.item{cursor:pointer;padding:6px;border-bottom:1px dashed var(--line)}
+.item:hover{background:var(--fg);color:#000}
+.view{margin-top:10px;padding:10px;border:1px solid var(--line);white-space:pre-wrap;color:#fff}
+.tin{display:flex;gap:6px}.tin input{flex:1;background:transparent;border:0;color:var(--fg);font:inherit;outline:none}
+</style>
+</head>
+<body>
+<canvas id="noise" width="160" height="160"></canvas>
+
+<div id="splash"><div>[ CLIQUE PARA INICIAR ]</div><small>ative o som</small></div>
+
+<div id="boot">
+  <div id="log"></div>
+  <div id="login">
+    <h1>UMBRA</h1>
+    <p>ACESSO RESTRITO — INSIRA A CHAVE</p>
+    <input id="pw" type="password" placeholder="······" autocomplete="off">
+    <div id="msg"></div>
+  </div>
+</div>
+
+<div id="desk">
+  <div id="icons"></div>
+  <div id="bar"><span>UMBRA // sessão ativa</span><span id="clock"></span></div>
+</div>
+
+<script>
+var ITER = 600000;
+var BLOB = "ARxqHvFIullNtGR7MKwxaJcSDvPcKuDCsZFWw1WFRvSaEwyS/OTZNf2ocrF3KFl+x6aJTiCgA2n07rhVC3C+vr2QQHMp7SmcLMnHnm+IhlXwA1w+mRyEUlwOy6RU3BpP7/aRAAdISHCAmDFQK8kjy14yh8rN2XlCiDrLhm4IQSg7e9mZ4ix5KEOhi/veHEXAPlDUBegY5FmeOXMrqeLpTQ+kMxWIbrPXtGaoxwRXmz8VTzOtJS4Em74ZFcgqtRuJeDexoienRvl6TQrePsupAwvVqwTOCHYkDiS3uu0GndwEjw/NW5DageX6E6OlYlFU2MqWzw1r/5oY9IB8HAc3Mk7aOauShZL2/yF5nlIvEfgSEnNICnDHFdVvr7h6N1VbJhDh91o9jnp5jKx5KXoifh2RR5T9WXaggV5DwoflcEUyDFtOStZQVKmLR6l/Q8ybQ1K0b3AV1+u6n/NrWnItLfckrAlo/sQegcBelH9t3Igfjp+a01BZR0r+exfu3G7TOlNQBZw0yYV460Z1dVOxu6RbGbIo1h7wMgeow3F6gxP99M769nWGV1JdSEHp/lAepPGpQWKiZPNMhoADeiAF/DexwHwuEBTqcWLXRvGknT1Ad3P48Trd+UjUoFiz/pAEYUDfBbjAwtp+2a0ZNTI01YSnjdyXRYIRm8tbuMAPjOtAPyO7WTG46h9miN8s5afRGznD8bohg3WmlTPk7O2GgKroxNnLjzUiQZMf+uOemr30pFryGOQ93/25mzoHq4QxmIPBlSPMJOsNOF5dK3KeYGaUJhleOgf22ROpjSgGNRFfD9UkUJq+3anR/+6DKjy6zEw10Lq55EYWTMst4TpTqP3gTXa2IcQUtlwBRoOg6ybJ2yX2dpUR+UkWzubjiEr+EtukWtCuwj1CJoQwj7ABVimwvtrbVj7HscAV0iZDPXBTCRci2Q4GW7zn92dcC6Y1meqRu5G0OO5WagpI6ajZTD1QJ6PMHlO7jIn+RYjngwBx402ewzbdDZV9gSc7x9LMHAMQ/cUzoSVutpyQRdc8BgWSKDRdEwG585J1Ow==";
+var ARQUIVOS, EMAILS, NOTAS;
+
+// ---- sons (WebAudio, sem arquivos) ----
+var AC = null;
+function tom(f, d, tipo, vol, ini){
+  if(!AC) return;
+  var o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime + (ini || 0);
+  o.type = tipo || "square"; o.frequency.setValueAtTime(f, t);
+  g.gain.setValueAtTime(vol || .05, t); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d);
+}
+function ruido(d, vol){
+  if(!AC) return;
+  var n = AC.sampleRate * d, b = AC.createBuffer(1, n, AC.sampleRate), c = b.getChannelData(0);
+  for(var i = 0; i < n; i++) c[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  var s = AC.createBufferSource(), g = AC.createGain(); s.buffer = b; g.gain.value = vol || .08;
+  s.connect(g); g.connect(AC.destination); s.start();
+}
+var som = {
+  tecla: function(){ tom(900 + Math.random() * 400, .04, "square", .025); },
+  erro: function(){ tom(140, .35, "sawtooth", .08); ruido(.25, .08); },
+  ok: function(){ tom(440, .18, "triangle", .08); tom(660, .18, "triangle", .08, .12); tom(880, .35, "triangle", .08, .24); },
+  abre: function(){ tom(500, .08, "square", .04); tom(750, .1, "square", .04, .06); },
+  fecha: function(){ tom(500, .08, "square", .04); tom(300, .1, "square", .04, .06); },
+  liga: function(){ ruido(.6, .1); tom(60, .8, "sawtooth", .05); }
+};
+
+// ---- ruído estático ----
+var nc = document.getElementById("noise"), nx = nc.getContext("2d"), img = nx.createImageData(160, 160);
+setInterval(function(){
+  for(var i = 0; i < img.data.length; i += 4){ var v = Math.random() * 255; img.data[i] = img.data[i+1] = img.data[i+2] = v; img.data[i+3] = 255; }
+  nx.putImageData(img, 0, 0);
+}, 70);
+
+// ---- trava permanente ----
+function bloqueado(){ try{ return localStorage.getItem("umbra_lock") === "1"; }catch(x){ return false; } }
+function negado(){
+  var b = document.getElementById("boot");
+  b.innerHTML = '<div style="text-align:center"><h1 style="font-size:clamp(30px,9vw,56px);letter-spacing:10px;margin:0 0 10px">ACESSO NEGADO</h1><p style="color:#777;letter-spacing:3px;font-size:12px">DISPOSITIVO BLOQUEADO PELA TRAVA DE SEGURANÇA</p></div>';
+  som.erro(); setTimeout(som.erro, 500);
+}
+
+// ---- início ----
+document.getElementById("splash").addEventListener("click", function(){
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  som.liga();
+  this.style.transition = "opacity .8s"; this.style.opacity = 0;
+  var s = this; setTimeout(function(){ s.style.display = "none"; }, 800);
+  var b = document.getElementById("boot"); b.style.display = "flex"; b.classList.add("fade");
+  if(bloqueado()){ negado(); return; }
+  digita();
+});
+
+var log = document.getElementById("log");
+var linhas = ["> iniciando UMBRA v2.0...","> carregando módulos... OK","> contornando barreira de segurança... OK","> verificando integridade... OK","> ATENÇÃO: sistema protegido","> identificação necessária_"];
+var li = 0, ci = 0;
+function digita(){
+  if(li >= linhas.length){ setTimeout(function(){ var l = document.getElementById("login"); l.style.display = "block"; l.classList.add("fade"); document.getElementById("pw").focus(); }, 400); return; }
+  var l = linhas[li]; log.textContent += l.charAt(ci++);
+  if(ci % 2) som.tecla();
+  if(ci >= l.length){ log.textContent += "\n"; li++; ci = 0; setTimeout(digita, 240); } else setTimeout(digita, 24);
+}
+
+// ---- senha ----
+var pw = document.getElementById("pw"), msg = document.getElementById("msg");
+async function abrirCofre(senha){
+  var b = Uint8Array.from(atob(BLOB), function(c){ return c.charCodeAt(0); });
+  var km = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha.trim().toLowerCase()), "PBKDF2", false, ["deriveKey"]);
+  var key = await crypto.subtle.deriveKey({name:"PBKDF2", salt:b.slice(0,16), iterations:ITER, hash:"SHA-256"}, km, {name:"AES-GCM", length:256}, false, ["decrypt"]);
+  var pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:b.slice(16,28)}, key, b.slice(28));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+pw.addEventListener("keydown", function(e){
+  if(e.key !== "Enter"){ som.tecla(); return; }
+  if(pw.disabled) return;
+  pw.disabled = true; msg.textContent = "VERIFICANDO...";
+  abrirCofre(pw.value).then(function(d){
+    ARQUIVOS = d.a; EMAILS = d.e; NOTAS = d.n;
+    msg.textContent = "ACESSO CONCEDIDO"; som.ok();
+    setTimeout(function(){
+      var bt = document.getElementById("boot"); bt.style.transition = "opacity .6s"; bt.style.opacity = 0;
+      setTimeout(function(){
+        bt.style.display = "none";
+        var dk = document.getElementById("desk"); dk.style.display = "block"; dk.classList.add("fade"); ruido(.4, .06);
+        var k = document.querySelectorAll(".ic"); for(var i = 0; i < k.length; i++) k[i].style.animationDelay = (.3 + i * .15) + "s";
+      }, 600);
+    }, 1200);
+  }).catch(function(){
+    msg.textContent = "ACESSO NEGADO"; pw.value = ""; som.erro(); pw.disabled = false; pw.focus();
+    pw.classList.remove("shake"); void pw.offsetWidth; pw.classList.add("shake");
+  });
+});
+
+// ---- relógio ----
+function hora(){ document.getElementById("clock").textContent = new Date().toLocaleTimeString("pt-BR"); }
+hora(); setInterval(hora, 1000);
+
+// ---- janelas ----
+var z = 10, n = 0;
+function abre(titulo, html, setup){
+  var w = document.createElement("div"); w.className = "win"; som.abre();
+  w.style.left = (30 + n * 26) % 160 + 100 + "px"; w.style.top = (30 + n * 26) % 140 + 40 + "px"; n++;
+  w.style.zIndex = ++z;
+  w.innerHTML = '<div class="tb"><span>' + titulo + '</span><i>✕</i></div><div class="bd">' + html + '</div>';
+  document.getElementById("desk").appendChild(w);
+  w.addEventListener("pointerdown", function(){ w.style.zIndex = ++z; });
+  w.querySelector("i").onclick = function(){ som.fecha(); w.remove(); };
+  w.querySelector(".tb").addEventListener("pointerdown", function(e){
+    var dx = e.clientX - w.offsetLeft, dy = e.clientY - w.offsetTop;
+    function mv(ev){ w.style.left = Math.max(0, ev.clientX - dx) + "px"; w.style.top = Math.max(0, ev.clientY - dy) + "px"; }
+    function up(){ removeEventListener("pointermove", mv); removeEventListener("pointerup", up); }
+    addEventListener("pointermove", mv); addEventListener("pointerup", up);
+  });
+  if(setup) setup(w.querySelector(".bd"));
+}
+function esc(s){ return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+var travado = false;
+function confidencial(){
+  if(travado) return;
+  travado = true; som.abre();
+  var ov = document.createElement("div");
+  ov.style.cssText = "position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;text-align:center;padding:20px";
+  ov.innerHTML = '<div style="width:min(440px,100%);border:1px solid #e8e8e8;padding:20px;background:#0d0d0d"><div id="sh" style="letter-spacing:2px;margin-bottom:12px;font-size:13px">VERIFICAÇÃO DE IDENTIDADE</div><div style="height:10px;border:1px solid #e8e8e8"><div id="sb" style="height:100%;width:0;background:#e8e8e8"></div></div><div id="st" style="margin-top:14px;min-height:44px;font-size:13px">preparando...</div></div>';
+  document.body.appendChild(ov);
+  var sb = ov.querySelector("#sb"), st = ov.querySelector("#st"), sh = ov.querySelector("#sh"), t = 0;
+  function tentativa(){
+    t++;
+    sh.textContent = "VERIFICAÇÃO DE IDENTIDADE — TENTATIVA " + t + "/3";
+    st.textContent = "escaneando...";
+    sb.style.transition = "none"; sb.style.width = "0"; void sb.offsetWidth;
+    sb.style.transition = "width 1.6s linear"; sb.style.width = "100%";
+    var tk = setInterval(som.tecla, 110);
+    setTimeout(function(){
+      clearInterval(tk); som.erro();
+      if(t < 3){ st.textContent = "FALHA NA VERIFICAÇÃO"; setTimeout(tentativa, 1100); }
+      else {
+        st.textContent = "ERRO: IDENTIDADE NÃO CORRESPONDE AO HACKER REGISTRADO";
+        setTimeout(function(){ st.textContent = "INTRUSO DETECTADO. TRAVA DE SEGURANÇA ATIVADA."; som.erro(); setTimeout(crash, 1400); }, 1500);
+      }
+    }, 1700);
+  }
+  tentativa();
+}
+function crash(){
+  try{ localStorage.setItem("umbra_lock", "1"); }catch(x){}
+  document.body.style.animation = "sh .15s infinite";
+  document.getElementById("noise").style.opacity = .6;
+  var gl = "█▓▒░#@%&?!01", nodes = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while(w.nextNode()){ var nd = w.currentNode, tg = nd.parentNode.tagName; if(nd.nodeValue.trim() && tg !== "SCRIPT" && tg !== "STYLE") nodes.push(nd); }
+  var kids = document.querySelectorAll("#desk .win, #desk .ic, #bar");
+  var bug = setInterval(function(){
+    nodes.forEach(function(nd){ nd.nodeValue = nd.nodeValue.split("").map(function(c){ return c !== " " && Math.random() < .3 ? gl.charAt(Math.floor(Math.random() * gl.length)) : c; }).join(""); });
+    kids.forEach(function(k){ k.style.transform = "translate(" + (Math.random() * 40 - 20) + "px," + (Math.random() * 20 - 10) + "px) skewX(" + (Math.random() * 20 - 10) + "deg)"; k.style.filter = Math.random() < .3 ? "invert(1)" : "none"; });
+    document.documentElement.style.filter = Math.random() < .25 ? "invert(1)" : "none";
+    ruido(.12, .07); tom(60 + Math.random() * 200, .1, "sawtooth", .05);
+  }, 90);
+  var msgs = ["ERRO 0x", "FALHA CRÍTICA", "MEMÓRIA CORROMPIDA", "SESSÃO INVÁLIDA", "VIOLAÇÃO 0x"];
+  var spam = setInterval(function(){
+    var e = document.createElement("div");
+    e.textContent = msgs[Math.floor(Math.random() * msgs.length)] + (Math.random() * 65535 | 0).toString(16).toUpperCase();
+    e.style.cssText = "position:fixed;z-index:70;background:#e8e8e8;color:#000;padding:8px 12px;font-weight:bold;left:" + Math.random() * 70 + "%;top:" + Math.random() * 90 + "%";
+    document.body.appendChild(e);
+  }, 130);
+  setTimeout(function(){
+    clearInterval(bug); clearInterval(spam);
+    var k = document.createElement("div");
+    k.style.cssText = "position:fixed;inset:0;z-index:100;background:#000;display:flex;align-items:center;justify-content:center;color:#444;letter-spacing:4px;font-size:12px";
+    document.body.appendChild(k);
+    document.body.style.animation = "none"; document.documentElement.style.filter = "none";
+    ruido(.7, .12); tom(40, 1, "sawtooth", .08);
+    try{ window.close(); }catch(x){}
+    setTimeout(function(){ k.textContent = "CONEXÃO ENCERRADA"; }, 1800);
+  }, 4200);
+}
+var APPS = [
+  ["▤", "Arquivos", function(){
+    abre("Arquivos", '<div id="fl"></div><div class="view" id="fv" style="display:none"></div>', function(b){
+      Object.keys(ARQUIVOS).forEach(function(k){
+        var d = document.createElement("div"); d.className = "item"; d.textContent = "▸ " + k;
+        d.onclick = function(){ som.tecla(); var v = b.querySelector("#fv"); v.style.display = "block"; v.textContent = ARQUIVOS[k]; };
+        b.querySelector("#fl").appendChild(d);
+      });
+    });
+  }],
+  ["✉", "Mensagens", function(){
+    abre("Mensagens", '<div id="ml"></div><div class="view" id="mv" style="display:none"></div>', function(b){
+      EMAILS.forEach(function(m){
+        var d = document.createElement("div"); d.className = "item"; d.innerHTML = "<b>" + esc(m[1]) + "</b><br><small>de: " + esc(m[0]) + "</small>";
+        d.onclick = function(){ som.tecla(); var v = b.querySelector("#mv"); v.style.display = "block"; v.textContent = m[2]; };
+        b.querySelector("#ml").appendChild(d);
+      });
+    });
+  }],
+  [">_", "Terminal", function(){
+    abre("Terminal", '<div id="to"></div><div class="tin"><span>$</span><input id="ti" autocomplete="off" autocapitalize="off"></div>', function(b){
+      var o = b.querySelector("#to"), i = b.querySelector("#ti");
+      function p(t){ o.innerHTML += "<div>" + esc(t) + "</div>"; b.scrollTop = b.scrollHeight; }
+      p("UMBRA shell. Digite 'ajuda'.");
+      i.focus();
+      i.addEventListener("keydown", function(e){
+        if(e.key !== "Enter"){ som.tecla(); return; }
+        var c = i.value.trim(), a = c.split(" "); i.value = ""; p("$ " + c);
+        if(a[0] === "ajuda") p("comandos: ls, cat <arquivo>, quem, limpar");
+        else if(a[0] === "ls") p(Object.keys(ARQUIVOS).join("   "));
+        else if(a[0] === "cat") p(ARQUIVOS[a[1]] || "arquivo não encontrado");
+        else if(a[0] === "quem") p("usuário: convidado\nnível: 1\nrastreamento: ativo");
+        else if(a[0] === "limpar") o.innerHTML = "";
+        else if(c){ p("comando desconhecido: " + a[0]); som.erro(); }
+      });
+    });
+  }],
+  ["≡", "Notas", function(){ abre("Notas", '<div style="white-space:pre-wrap">' + esc(NOTAS) + '</div>'); }],
+  ["▣", "Pasta Confidencial", function(){
+    confidencial();
+  }]
+];
+var ic = document.getElementById("icons");
+APPS.forEach(function(a){
+  var d = document.createElement("div"); d.className = "ic"; d.innerHTML = "<b>" + a[0] + "</b><span>" + a[1] + "</span>";
+  d.onclick = a[2]; ic.appendChild(d);
+});
+</script>
+</body>
+</html>
